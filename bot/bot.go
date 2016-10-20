@@ -60,7 +60,6 @@ func handleMessage(msg *slack.MessageEvent, router *handler.Router, rtm *slack.R
 		if err != nil {
 			return err
 		}
-
 		rtm.SendMessage(rtm.NewOutgoingMessage(response, msg.Channel))
 	}
 
@@ -84,7 +83,7 @@ func populateHandlers() []handler.Handler {
 
 	handlers = append(handlers, &handler.MtgSearchResponder{
 		// [[card name|set]]
-		RE: regexp.MustCompile("(?:^[^#]?\\[\\[(.*?)(\\|...)?\\]\\])+"),
+		RE: regexp.MustCompile("(?:^[^#]?\\[\\[(.*?)(?:\\|(...))?\\]\\])+"),
 	}, &handler.MtgStatsResponder{
 		// #[[key:value, key:value]]
 		RE: regexp.MustCompile("#\\[\\[((?:\\w+:\\s*\\w+,?\\s*)+)\\]\\]"),

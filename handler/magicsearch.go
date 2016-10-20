@@ -63,7 +63,6 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 	var err error
 	response := ""
 	multi := len(msr.Matches) > 1
-	
 	for _, match := range msr.Matches {
 		query := url.Values{}
 		query.Set("name", match[1])
@@ -84,7 +83,6 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 
 		response += s
 	}
-
 	return response, err 
 }
 
@@ -101,7 +99,7 @@ func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *
 		}
 	}
 
-	resEd := &(resCard.Editions[len(resCard.Editions)-1])
+	resEd := &(resCard.Editions[0])
 	if ed != "" {
 		for _, e := range resCard.Editions {
 			if strings.EqualFold(e.SetID, ed) {
