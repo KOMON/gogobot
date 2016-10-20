@@ -18,7 +18,6 @@ type multiMTGError struct {
 
 func (e *multiMTGError) Error() string {
 	s := ""
-
 	for i, e := range e.errors {
 		if e != nil {
 			s += fmt.Sprintf("%d: %s\n", i, e.Error())
@@ -26,6 +25,14 @@ func (e *multiMTGError) Error() string {
 	}
 
 	return s
+}
+
+func (e multiMTGError) Empty() bool {
+	if len(e.errors) == 0 {
+		return true
+	}
+
+	return false
 }
 
 func (e *multiMTGError) add(err error) {
@@ -53,8 +60,8 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 		return "", &handlerError{ "MtgSearchResponder: no matches" }
 	}
 
+	var err error
 	response := ""
-	errs := &multiMTGError{}
 	multi := len(msr.Matches) > 1
 	
 	for _, match := range msr.Matches {
@@ -70,7 +77,6 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 
 		if err != nil || len(*cards) == 0 {
 			response += "Card Not Found!\n"
-			errs.add(err)
 			continue
 		}
 
@@ -80,7 +86,7 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 		response += s
 	}
 
-	return response, errs
+	return response, err 
 }
 
 func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *deckbrew.Edition) {

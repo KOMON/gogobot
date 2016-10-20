@@ -21,8 +21,8 @@ type (
 	Edition struct {
 		MultiverseID float64
 		Number       string
-		SetID        string
-		ImageURL     string
+		SetID        string `json:"set_id"`
+		ImageURL     string `json:"image_url"`
 	}
 )
 

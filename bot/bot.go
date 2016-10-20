@@ -29,7 +29,6 @@ func Run() int {
 	router := &handler.Router{
 		Handlers: populateHandlers(),
 	}
-
 	go rtm.ManageConnection()
 
 	for {
@@ -37,7 +36,7 @@ func Run() int {
 		if msg.Type == "message" {
 			err := handleMessage(msg.Data.(*slack.MessageEvent), router, rtm)
 			if err != nil {
-				logger.Printf("message handle error: %v", err)
+				logger.Printf("message handle error: %s", err.Error())
 				if err.Error() == "shutdown" {
 					break
 				}
@@ -85,7 +84,7 @@ func populateHandlers() []handler.Handler {
 
 	handlers = append(handlers, &handler.MtgSearchResponder{
 		// [[card name|set]]
-		RE: regexp.MustCompile("(?:[^#]\\[\\[(.*?)(\\|...)?\\]\\])+"),
+		RE: regexp.MustCompile("(?:[^#]+\\[\\[(.*?)(\\|...)?\\]\\])+"),
 	}, &handler.MtgStatsResponder{
 		// #[[key:value, key:value]]
 		RE: regexp.MustCompile("#\\[\\[((?:\\w+:\\s*\\w+,?\\s*)+)\\]\\]"),

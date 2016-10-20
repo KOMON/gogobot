@@ -54,7 +54,7 @@ func buildStatsResponse(query url.Values) (string, error) {
 	for len(*cards) == 100 {
 		page++
 		query.Set("page", fmt.Sprintf("%d", page))
-		cards, err := deckbrew.GetCards(query)
+		cards, err = deckbrew.GetCards(query)
 
 		if err != nil || cards == nil {
 			break
