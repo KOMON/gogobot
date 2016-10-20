@@ -28,7 +28,6 @@ type (
 
 func GetCards(req url.Values) (*[]Card, error) {
 	res, err := http.Get(deckbrewURL + req.Encode())
-
 	if res == nil || err != nil {
 		return nil, err
 	}

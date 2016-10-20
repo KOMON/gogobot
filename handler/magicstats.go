@@ -34,7 +34,7 @@ func (msr MtgStatsResponder) Respond() (string, error) {
 
 	for _, pair := range strings.Split(msr.Matches[1], ",") {
 		pairray := strings.Split(pair, ":")
-		query.Set(strings.TrimSpace(pairray[0]), strings.TrimSpace(pairray[1]))
+		query.Add(strings.TrimSpace(pairray[0]), strings.TrimSpace(pairray[1]))
 	}
 
 	return buildStatsResponse(query)
