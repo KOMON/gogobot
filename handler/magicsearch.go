@@ -65,7 +65,6 @@ func (msr MtgSearchResponder) Respond() (string, error) {
 	multi := len(msr.Matches) > 1
 	
 	for _, match := range msr.Matches {
-
 		query := url.Values{}
 		query.Set("name", match[1])
 
