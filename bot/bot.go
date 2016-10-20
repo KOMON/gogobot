@@ -55,7 +55,6 @@ func handleMessage(msg *slack.MessageEvent, router *handler.Router, rtm *slack.R
 	}
 
 	if h != nil {
-
 		response, err := (*h).Respond()
 		if err != nil {
 			return err

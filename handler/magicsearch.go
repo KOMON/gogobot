@@ -91,6 +91,7 @@ func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *
 		return nil, nil
 	}
 	resCard := &(*cards)[0]
+	resEd := &resCard.Editions[0]
 
 	for _, card := range *cards {
 		if strings.EqualFold(card.Name, name) {
@@ -99,7 +100,6 @@ func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *
 		}
 	}
 
-	resEd := &(resCard.Editions[0])
 	if ed != "" {
 		for _, e := range resCard.Editions {
 			if strings.EqualFold(e.SetID, ed) {
@@ -107,7 +107,15 @@ func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *
 				break
 			}
 		}
+	} else {
+		for _, e := range resCard.Editions {
+			if len(e.SetID) == 3 {
+				resEd = & e
+				break
+			}
+		}
 	}
+
 
 	return resCard, resEd
 }
