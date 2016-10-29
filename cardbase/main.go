@@ -88,7 +88,11 @@ func main() {
 		cardL := len(s.Cards)
 		for j, c := range s.Cards {
 			fmt.Printf("Importing card %d/%d\r",j+1,cardL )
-			ImportCard(db, c)
+			if s.Type == "promo" {
+				ImportCard(db, c, c.ReleaseDate)
+			} else {
+				ImportCard(db, c, s.ReleaseDate)
+			}
 			ImportSetCard(db, s, c)
 			ImportCardColor(db, c)
 			ImportCardColorID(db, c)
@@ -100,7 +104,7 @@ func main() {
 	}
 }
 
-func ImportCard(db *sql.DB, c Card) {
+func ImportCard(db *sql.DB, c Card, releaseDate string) {
 	const insertCard string = `insert into cards(
 id, name, mana_cost, cmc, type, card_text,
 flavor, artist, number, power, toughness,
@@ -121,7 +125,7 @@ reserved, release_date, mci_number
 
 	_, err = stmt.Exec(c.ID, c.Name, c.ManaCost, c.CMC, c.Type, c.Text, c.Flavor,
 		c.Artist, c.Number, c.Power, c.Toughness, c.Loyalty, c.MultiverseID,
-		c.Timeshifted, c.Reserved, c.ReleaseDate, c.MCINumber)
+		c.Timeshifted, c.Reserved, releaseDate, c.MCINumber)
 
 	if err != nil {
 		log.Fatal(err)

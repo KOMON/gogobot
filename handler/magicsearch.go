@@ -2,138 +2,132 @@ package handler
 
 import (
 	"fmt"
-	"net/url"
-	"regexp"
 	"strings"
+	"database/sql"
+	"log"
 
-	"github.com/komon/gogobot/deckbrew"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-var subBrackets *regexp.Regexp = regexp.MustCompile("[{}]")
-var fixSymbols *regexp.Regexp = regexp.MustCompile(":([WURBGX]):")
 
-type multiMTGError struct {
-	errors []error
+type MtgSearchResponder struct {
+	db *sql.DB
+	matches []string
 }
 
-func (e *multiMTGError) Error() string {
-	s := ""
-	for i, e := range e.errors {
-		if e != nil {
-			s += fmt.Sprintf("%d: %s\n", i, e.Error())
+type Query struct {
+	Name string
+	ManaCost string
+	CMC string
+	Colors []string
+	ColorID []string
+	Supertypes []string
+	Types []string
+	Subtypes []string
+	Rarity string
+	Text string
+	Flavor string
+	Artist string
+	Power string
+	Toughness string
+	Loyalty string
+	Set string
+	Block string
+}
+
+func NewMtgSearch() MtgSearchResponder {
+	db, err := sql.Open("sqlite3", "mtg.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	
+	return MtgSearchResponder{
+		db: db,
+		matches: []string{},
+	}
+}
+
+func (msr *MtgSearchResponder) Match(s string) bool {
+	msr.matches = []string{}
+
+	for i:= strings.Index(s, "[["); i != -1; i = strings.Index(s, "[[") {
+		fmt.Println("Looping", i, s)
+		j := strings.Index(s, "]]")
+
+		if i != 0 && s[i-1] == '#' {
+			s = s[j+2:]
+			continue
 		}
+		msr.matches = append(msr.matches, s[i+2:j])
+		s = s[j+2:]
 	}
 
-	return s
-}
-
-func (e multiMTGError) Empty() bool {
-	if len(e.errors) == 0 {
+	if len(msr.matches) > 0 {
 		return true
 	}
 
 	return false
 }
 
-func (e *multiMTGError) add(err error) {
-	e.errors = append(e.errors, err)
-}
-
-type MtgSearchResponder struct {
-		RE      *regexp.Regexp
-		Matches [][]string
-}
-
-
-func (msr *MtgSearchResponder) Match(s string) bool {
-	msr.Matches = msr.RE.FindAllStringSubmatch(s, -1)
-
-	if msr.Matches == nil {
-		return false
-	}
-
-	return true
-}
-
 func (msr MtgSearchResponder) Respond() (string, error) {
-	if msr.Matches == nil {
-		return "", &handlerError{ "MtgSearchResponder: no matches" }
+	findCard := `select name, mana_cost, card_text, multiverse_id from cards where id = (select id from virt_cards where name match ? and multiverse_id != 0) order by release_date limit 1`
+	findCardBySet := `select name, mana_cost, card_text, multiverse_id from cards inner join set_card where cards.id = (select id from virt_cards where name match ? and multiverse_id != 0) and set_code = ? limit 1`
+	tx, err := msr.db.Begin()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	var err error
+	findStmt, err := tx.Prepare(findCard)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer findStmt.Close()
+
+	findBySetStmt, err := tx.Prepare(findCardBySet)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer findBySetStmt.Close()
+
 	response := ""
-	multi := len(msr.Matches) > 1
-	for _, match := range msr.Matches {
-		query := url.Values{}
-		query.Set("name", match[1])
+	multi := len(msr.matches) > 1
+	for _, match := range msr.matches {
+		var row *sql.Row
+		args := strings.Split(match, "|")
 
-		if match[2] != "" {
-			query.Set("edition", match[2])
+		if len(args) == 1 {
+			row = findStmt.QueryRow(args[0])
+		} else {
+			row = findBySetStmt.QueryRow(args[0], args[1])
 		}
 
-		cards, err := deckbrew.GetCards(query)
-
-		if err != nil || len(*cards) == 0 {
-			response += "Card Not Found!\n"
-			continue
-		}
-
-		c, e := findCard(cards, match[1], match[2])
-		s := buildSearchResponse(c, e, multi)
-
-		response += s
+			response += buildSearchResponse(row, multi)
 	}
-	return response, err 
+
+	msr.matches = []string{}
+	return response, err
 }
 
-func findCard(cards *[]deckbrew.Card, name string, ed string) (*deckbrew.Card, *deckbrew.Edition) {
-	if cards == nil {
-		return nil, nil
-	}
-	resCard := &(*cards)[0]
-	resEd := &resCard.Editions[0]
+func buildSearchResponse(row *sql.Row, multi bool) string {
+	name, cost, text, multiverseID := "", "","",0
 
-	for _, card := range *cards {
-		if strings.EqualFold(card.Name, name) {
-			resCard = &card
-			break
-		}
+	err := row.Scan(&name, &cost, &text, &multiverseID)
+	if err != nil {
+		return "Card not found!\n"
 	}
 
-	if ed != "" {
-		for _, e := range resCard.Editions {
-			if strings.EqualFold(e.SetID, ed) {
-				resEd = &e
-				break
-			}
-		}
-	} else {
-		for _, e := range resCard.Editions {
-			if len(e.SetID) == 3 {
-				resEd = & e
-				break
-			}
-		}
+	if multi {
+		return fmt.Sprintf("%s %s ```%s ```", name, formatCost(cost), text)
 	}
-
-
-	return resCard, resEd
+	return fmt.Sprintf("%s %s ```%s ```", formatImageURL(multiverseID), formatCost(cost), text)
 }
 
-func buildSearchResponse(c *deckbrew.Card, e *deckbrew.Edition, multi bool) string {
-	if c == nil || e == nil {
-		return "Card Not Found!"
-	}
-	format := "%s\n%s```%s```"
-	cost := formatCost(c.Cost)
-
-	if !multi {
-		return fmt.Sprintf(format, e.ImageURL, cost, c.Text)
-	}
-	return fmt.Sprintf(format, c.Name, cost, c.Text)
+func formatImageURL(multiverseID int) string {
+	return fmt.Sprintf("http://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=%d&type=card", multiverseID)
 }
 
 func formatCost(cost string) string {
-	cost = subBrackets.ReplaceAllString(cost, ":")
-	return fixSymbols.ReplaceAllString(cost, ":$1$1:")
+	subBrackets := strings.NewReplacer("{", ":", "}", ":")
+	fixSymbols := strings.NewReplacer("W", "WW", "U", "UU", "B", "BB", "G", "GG", "R", "RR")
+	return fixSymbols.Replace(subBrackets.Replace(cost))
 }
