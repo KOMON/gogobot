@@ -80,13 +80,10 @@ func populateHandlers() []handler.Handler {
 		handlers = append(handlers, new)
 	}
 
-	handlers = append(handlers, &handler.MtgSearchResponder{
-		// [[card name|set]]
-		RE: regexp.MustCompile("(?:^[^#]?\\[\\[(.*?)(?:\\|(...))?\\]\\])+"),
-	}, &handler.MtgStatsResponder{
-		// #[[key:value, key:value]]
-		RE: regexp.MustCompile("#\\[\\[((?:\\w+:\\s*\\w+,?\\s*)+)\\]\\]"),
-	})
+	mtgSearcher := handler.NewMtgSearch()
+	mtgStats := handler.NewMtgStats()
+
+	handlers = append(handlers, &mtgSearcher, &mtgStats)
 
 	return handlers
 }
