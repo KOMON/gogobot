@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"fmt"
+	"strconv"
 )
 
 const createSets string = `create table sets (
@@ -27,8 +28,8 @@ card_text text,
 flavor text,
 artist varchar(50),
 number varchar(20),
-power varchar(5),
-toughness varchar(5),
+power integer,
+toughness integer,
 loyalty integer,
 multiverse_id integer,
 timeshifted boolean,
@@ -122,15 +123,20 @@ reserved, release_date, mci_number
 		log.Fatal(err)
 	}
 	defer stmt.Close()
-
+	p, err := strconv.ParseInt(c.Power,0,0)
+	if err != nil {
+		p = 0
+	}
+	t, err := strconv.ParseInt(c.Toughness,0,0)
+	if err != nil {
+		t = 0
+	}
 	_, err = stmt.Exec(c.ID, c.Name, c.ManaCost, c.CMC, c.Type, c.Text, c.Flavor,
-		c.Artist, c.Number, c.Power, c.Toughness, c.Loyalty, c.MultiverseID,
+		c.Artist, c.Number, p, t, c.Loyalty, c.MultiverseID,
 		c.Timeshifted, c.Reserved, releaseDate, c.MCINumber)
-
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	tx.Commit()
 }
 

@@ -68,53 +68,97 @@ func (msr MtgStatsResponder) runSearch(query Query) (string, error) {
 
 	if len(query["verb"]) != 0 {
 		//select
-		if v := strings.ToLower(query["verb"][0][0:2]); v == "min" || v == "max" {
-			stmt = sq.Select("name", "set_code", "multiverse_id", query["verb"][0]).
-				From("cards").
-				Join("set_cards on cards.id=set_cards.id")
-		} else if query["verb"][0] == ""{
-			stmt = sq.Select("count(id)").From("cards")
+		if v := strings.ToLower(query["verb"][0][0:3]); v == "min" || v == "max" {
+			stmt = sq.Select("name", "multiverse_id", query["verb"][0]).
+				From("cards")
 		} else {
 			stmt = sq.Select(query["verb"][0]).From("cards")
 		}
+	} else {
+		stmt = sq.Select("count(cards.id)").From("cards")
+		
 	}
-
 	for k,v := range query {
 		switch k {
 		case "verb":
 			continue
-		case "colors":
+		case "names", "name":
+			eq, not := splitNegatives(v)
+			fmt.Println(eq, not)
+			if len(eq[0]) != 0 {
+				stmt = stmt.Where(sq.Eq{"cards.name": eq})
+			}
+			if len(not[0]) != 0 {
+				stmt = stmt.Where(sq.NotEq{"cards.name": not})
+			}
+		case "colors", "color":
 			stmt = stmt.Join("card_color on cards.id=card_color.id").
-				Where(genColorQuery(v))
-		case "colorID":
+				Where(genColorQuery(v, false))
+		case "colorIDs", "colorID":
 			stmt = stmt.Join("card_colorID on cards.id=card_colorID.id").
-				Where(genColorQuery(v))
-		case "supertypes":
-			stmt = stmt.Join("card_supertype on cards.id=card_supertype.id").
-				Where(sq.Eq{"supertype": v})
-		case "types":
-			stmt = stmt.Join("card_type on cards.id=card_type.id").
-				Where(sq.Eq{"type": v})
-		case "subtypes":
-			stmt = stmt.Join("card_subtype on cards.id=card_subtype.id").
-				Where(sq.Eq{"subtype": v})
+				Where(genColorQuery(v, true))
+		case "supertypes", "supertype":
+			stmt = msr.joinAndWhere("card_supertype", "supertype", v, stmt, strings.Title)
+		case "types", "type":
+			stmt = msr.joinAndWhere("card_type", "type", v, stmt, strings.Title)
+		case "subtypes", "subtype":
+			stmt = msr.joinAndWhere("card_subtype", "subtype", v, stmt, strings.Title)
+		case "sets", "set", "set_codes", "set_code":
+			stmt = msr.joinAndWhere("set_card", "set_code", v, stmt, strings.ToUpper)
 		default:
 			eq := sq.Eq{}
 			eq[k] = v
 			stmt = stmt.Where(eq)
 		}
 	}
-	rows, err := stmt.RunWith(msr.db).Query()
+	rows, err := stmt.Where("multiverse_id != 0").RunWith(msr.db).Query()
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer rows.Close()
-	return buildResponse(rows, query["verb"][0])
+	return buildResponse(rows, query["verb"])
 }
 
-func buildResponse(rows *sql.Rows, verb string) (string, error) {
-	if verb == "" || strings.ToLower(verb) == "count" {
+func (msr MtgStatsResponder) joinAndWhere(table string, column string, 
+values []string, stmt sq.SelectBuilder, f func(string) string) sq.SelectBuilder {
+
+	eq, not := splitNegatives(values)
+	newStmt := stmt.Join(table + " on cards.id=" + table + ".id")
+	disqualIDs := []string{}
+	disqualQuery := sq.
+		Select("cards.id").
+		From("cards").
+		Join(table + " on cards.id=" + table + ".id").
+		Where(sq.Eq{table+"."+column: strMap(not, f)})
+
+	disqualRows, err := disqualQuery.RunWith(msr.db).Query()
+
+	if err != nil {
+		log.Print(err)
+	} else {
+		for disqualRows.Next() {
+			ID := ""
+			err := disqualRows.Scan(&ID)
+
+			if err != nil {
+				log.Print(err)
+			}
+
+			disqualIDs = append(disqualIDs, ID)
+		}
+	}
+	if len(eq[0]) != 0 {
+		newStmt = newStmt.Where(sq.Eq{table+"."+column: strMap(eq, f)})
+	}
+	if len(disqualIDs) != 0 {
+		newStmt = newStmt.Where(sq.NotEq{"cards.id": disqualIDs})
+	}
+	return newStmt
+}
+
+
+func buildResponse(rows *sql.Rows, verb []string) (string, error) {
+	if len(verb) == 0 || strings.ToLower(verb[0]) == "count" {
 		count := 0
 		rows.Next()
 		err := rows.Scan(&count)
@@ -123,16 +167,16 @@ func buildResponse(rows *sql.Rows, verb string) (string, error) {
 		}
 
 		return fmt.Sprintf("Count: %d", count), err
-	} 
-	if v := strings.ToLower(verb[0:2]); v == "min" || v == "max" {
-		name, setCode, multiverseID, num := "", "", "", 0
+	}
+	if v := strings.TrimSpace(strings.ToLower(verb[0][0:3])); v == "min" || v == "max" {
+		name, multiverseID, num := "", "", 0
 		rows.Next()
-		err := rows.Scan(&name, &setCode, &multiverseID, &num)
+		err := rows.Scan(&name, &multiverseID, &num)
 		if err != nil {
 			return "Error! ", err
 		}
-		return fmt.Sprintf("%s: %d\nhttp://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=%s&type=card\n %s %s",
-		verb, num, multiverseID, name, setCode), err
+		return fmt.Sprintf("%s: %d\nhttp://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=%s&type=card\n %s",
+		verb[0], num, multiverseID, name), err
 	}
 	num := 0.0
 	rows.Next()
@@ -140,20 +184,69 @@ func buildResponse(rows *sql.Rows, verb string) (string, error) {
 	if err != nil {
 		return "Error! ", err
 	}
-	return fmt.Sprintf("%s: %f", verb, num), err
+	return fmt.Sprintf("%s: %f", verb[0], num), err
 }
 
-func genColorQuery(colors []string) string {
+func genColorQuery(colors []string, ID bool) string {
 	query := "0"
 	for _, color := range colors {
 		if len(color) > 1 {
 			query += "|1"
 			for _, char := range color {
-				query += "&" + string(unicode.ToLower(char))
+				if ID {
+					query += "&" + "card_colorID." + string(unicode.ToLower(char))
+				} else {
+					query += "&" + "card_color." + string(unicode.ToLower(char))
+				}
 			}
 		} else {
-			query += "|" + strings.ToLower(color)
+			if ID {
+				query += "|" + "card_colorID." + strings.ToLower(color)				
+			} else {
+				query += "|" + "card_color." + strings.ToLower(color)
+			}
 		}
 	}
-	return query
+	return strings.ToUpper(query)
+}
+
+func strMap(ss []string, f func(string) string) []string {
+	mapped := make([]string, len(ss))
+	for i, s := range ss {
+		mapped[i] = f(s)
+	}
+
+	return mapped
+}
+
+func strFilter(ss []string, f func(string) bool) []string {
+	matches := make([]string, len(ss))
+	for i, s := range ss {
+		if f(s) {
+			matches[i] = s
+		}
+	}
+	return matches
+}
+
+func splitNegatives(ss []string) ([]string, []string) {
+	matches := strFilter(ss, func(s string) bool {
+		if s[0] == '!'{
+			return false
+		}
+		return true;
+	})
+
+	non := strFilter(ss, func(s string) bool {
+		if len(s) != 0 && s[0] == '!' {
+			return true
+		}
+		return false
+	})
+	if len(non[0]) != 0 {
+		non = strMap(non, func(s string) string {
+			return s[1:]
+		})
+	}
+	return matches, non
 }

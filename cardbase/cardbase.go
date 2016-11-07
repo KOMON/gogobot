@@ -25,12 +25,12 @@ type Card struct {
 	Number        string   `json:"number"`
 	Power         string   `json:"power"`
 	Toughness     string   `json:"toughness"`
-	Loyalty       float64  `json:"loyalty"`
-	MultiverseID  float64  `json:"multiverseid"`
-	Timeshifted   bool     `json:"timeshifted"`
-	Reserved      bool     `json:"reserved"`
-	ReleaseDate   string   `json:"releaseDate"`
-	MCINumber     string   `json:"mciNumber"`
+	Loyalty       float64 `json:"loyalty"`
+	MultiverseID  float64 `json:"multiverseid"`
+	Timeshifted   bool    `json:"timeshifted"`
+	Reserved      bool    `json:"reserved"`
+	ReleaseDate   string  `json:"releaseDate"`
+	MCINumber     string  `json:"mciNumber"`
 }
 
 type Set struct {
