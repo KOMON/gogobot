@@ -11,6 +11,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 )
 
+
 type MtgStatsResponder struct {
 	db *sql.DB
 	matches []string
@@ -24,7 +25,7 @@ func NewMtgStats() MtgStatsResponder {
 		log.Fatal(err)
 	}
 
-	return MtgStatsResponder{
+	return MtgStatsResponder {
 		db: db,
 	}
 }
@@ -46,45 +47,54 @@ func (msr *MtgStatsResponder) Match(s string) bool {
 }
 
 func (msr MtgStatsResponder) Respond() (string, error) {
-	query := Query{}
-	args := strings.Split(msr.matches[0], ",")
-	for _, arg := range args {
-		kv := strings.Split(arg, ":")
-		query[strings.TrimSpace(kv[0])] = strings.Split(strings.TrimSpace(kv[1]), "|")
+	response := ""
+	var err error
+	for _, match := range msr.matches {
+		query := Query{}
+		args := strings.Split(match, ",")
+		for _, arg := range args {
+			if len(arg) == 0 {
+				break
+			}
+			kv := strings.Split(arg, ":")
+			query[strings.TrimSpace(kv[0])] = strMap(strings.Split(kv[1], "|"), strings.TrimSpace)
+		}
+
+		rows, err := msr.runSearch(query)
+		
+		if err != nil {
+			return "Invalid query!", err
+		}
+
+		defer rows.Close()
+		r, err := buildResponse(rows, query["verb"])
+		response += r + "\n"
 	}
-	return msr.runSearch(query)
+
+	return response, err
 }
 
-func (msr MtgStatsResponder) runSearch(query Query) (string, error) {
-	//#[[verb: avg(cmc)]]
-	//verbs: avg, count, min, max, sum
-	// avg - we just want the average
-	// count - we just want the count
-	// sum - we just want the sum
-	// min - we want the min column as well as name and set and image?
-	// max - we want the max column as well as ...
-
+func (msr MtgStatsResponder) runSearch(query Query) (*sql.Rows, error) {
 	var stmt sq.SelectBuilder
 
-	if len(query["verb"]) != 0 {
-		//select
-		if v := strings.ToLower(query["verb"][0][0:3]); v == "min" || v == "max" {
-			stmt = sq.Select("name", "multiverse_id", query["verb"][0]).
+	if len(query["verb"]) == 0 {
+		stmt = sq.Select("count(cards.id)").From("cards")
+	} else {
+		v := strings.Split(query["verb"][0], "(")[0]
+		if v == "min" || v == "max" {
+			stmt = sq.Select("cards.name", "cards.multiverse_id", query["verb"][0]).
 				From("cards")
 		} else {
 			stmt = sq.Select(query["verb"][0]).From("cards")
 		}
-	} else {
-		stmt = sq.Select("count(cards.id)").From("cards")
-		
 	}
-	for k,v := range query {
+
+	for k, v := range query {
 		switch k {
-		case "verb":
+		case "verb", "verbs":
 			continue
-		case "names", "name":
+		case "names", "name" :
 			eq, not := splitNegatives(v)
-			fmt.Println(eq, not)
 			if len(eq[0]) != 0 {
 				stmt = stmt.Where(sq.Eq{"cards.name": eq})
 			}
@@ -92,11 +102,11 @@ func (msr MtgStatsResponder) runSearch(query Query) (string, error) {
 				stmt = stmt.Where(sq.NotEq{"cards.name": not})
 			}
 		case "colors", "color":
-			stmt = stmt.Join("card_color on cards.id=card_color.id").
-				Where(genColorQuery(v, false))
+			stmt = stmt.Join("card_color on cards.id = card_color.id").
+				Where(colorQuery(v, false))
 		case "colorIDs", "colorID":
 			stmt = stmt.Join("card_colorID on cards.id=card_colorID.id").
-				Where(genColorQuery(v, true))
+				Where(colorQuery(v, true))
 		case "supertypes", "supertype":
 			stmt = msr.joinAndWhere("card_supertype", "supertype", v, stmt, strings.Title)
 		case "types", "type":
@@ -111,12 +121,7 @@ func (msr MtgStatsResponder) runSearch(query Query) (string, error) {
 			stmt = stmt.Where(eq)
 		}
 	}
-	rows, err := stmt.Where("multiverse_id != 0").RunWith(msr.db).Query()
-	if err != nil {
-		log.Print(err)
-	}
-	defer rows.Close()
-	return buildResponse(rows, query["verb"])
+	return stmt.Where("multiverse_id != 0").RunWith(msr.db).Query()
 }
 
 func (msr MtgStatsResponder) joinAndWhere(table string, column string, 
@@ -156,8 +161,11 @@ values []string, stmt sq.SelectBuilder, f func(string) string) sq.SelectBuilder 
 	return newStmt
 }
 
-
 func buildResponse(rows *sql.Rows, verb []string) (string, error) {
+	if rows == nil {
+		return "Something went wrong!", nil
+	}
+
 	if len(verb) == 0 || strings.ToLower(verb[0]) == "count" {
 		count := 0
 		rows.Next()
@@ -168,7 +176,10 @@ func buildResponse(rows *sql.Rows, verb []string) (string, error) {
 
 		return fmt.Sprintf("Count: %d", count), err
 	}
-	if v := strings.TrimSpace(strings.ToLower(verb[0][0:3])); v == "min" || v == "max" {
+
+	v := strings.ToLower(strings.Split(verb[0], "(")[0])
+
+	if v == "min" || v == "max" {
 		name, multiverseID, num := "", "", 0
 		rows.Next()
 		err := rows.Scan(&name, &multiverseID, &num)
@@ -176,7 +187,7 @@ func buildResponse(rows *sql.Rows, verb []string) (string, error) {
 			return "Error! ", err
 		}
 		return fmt.Sprintf("%s: %d\nhttp://gatherer.wizards.com/Handlers/Image.ashx?multiverseid=%s&type=card\n %s",
-		verb[0], num, multiverseID, name), err
+			verb[0], num, multiverseID, name), err
 	}
 	num := 0.0
 	rows.Next()
@@ -187,27 +198,39 @@ func buildResponse(rows *sql.Rows, verb []string) (string, error) {
 	return fmt.Sprintf("%s: %f", verb[0], num), err
 }
 
-func genColorQuery(colors []string, ID bool) string {
-	query := "0"
+func colorQuery(colors []string, ID bool) string {
+	query, table := "0", ""
+	if ID {
+		table = "card_colorID"
+	} else {
+		table = "card_color"
+	}
+
 	for _, color := range colors {
 		if len(color) > 1 {
 			query += "|1"
-			for _, char := range color {
-				if ID {
-					query += "&" + "card_colorID." + string(unicode.ToLower(char))
-				} else {
-					query += "&" + "card_color." + string(unicode.ToLower(char))
+			for _, rune := range color {
+				query += "&" + table + "."
+				switch string(rune) {
+				case "r", "R":
+					fallthrough
+				case "u", "U":
+					fallthrough
+				case "b", "B":
+					fallthrough
+				case "g", "G":
+					fallthrough
+				case "w", "W":
+					query += string(unicode.ToLower(rune))
+				default:
+					query += "colorless"
 				}
 			}
 		} else {
-			if ID {
-				query += "|" + "card_colorID." + strings.ToLower(color)				
-			} else {
-				query += "|" + "card_color." + strings.ToLower(color)
-			}
+			query += "|" + table + "." + strings.ToLower(color)
 		}
 	}
-	return strings.ToUpper(query)
+	return query
 }
 
 func strMap(ss []string, f func(string) string) []string {

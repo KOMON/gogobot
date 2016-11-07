@@ -57,6 +57,7 @@ func handleMessage(msg *slack.MessageEvent, router *handler.Router, rtm *slack.R
 	if h != nil {
 		response, err := (*h).Respond()
 		if err != nil {
+			rtm.SendMessage(rtm.NewOutgoingMessage(response + err.Error(), msg.Channel))
 			return err
 		}
 		rtm.SendMessage(rtm.NewOutgoingMessage(response, msg.Channel))

@@ -17,3 +17,7 @@ responses = ["やれやれだぜ..."]
 [[responders]]
 regexp = '''(?:eh,*[\t ]*jojo(bot)?\?)|(?:isn't[\t ]+that[\t ]+right,*[\t ]*jojo(bot)?\?)'''
 responses = ["Yeah!", "Sure", "...", "Nah", "Not really"]
+
+[[responders]]
+regexp = '''^jojo[\t ]*help[\t ]*verbs'''
+responses = ["```verbs available: avg, count, sum, min, max```"]
