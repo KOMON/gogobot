@@ -113,7 +113,7 @@ func (msr MtgStatsResponder) runSearch(query Query) (string, error) {
 	}
 	rows, err := stmt.Where("multiverse_id != 0").RunWith(msr.db).Query()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 	}
 	defer rows.Close()
 	return buildResponse(rows, query["verb"])
