@@ -210,7 +210,6 @@ func colorQuery(colors []string, ID bool) string {
 		if len(color) > 1 {
 			query += "|1"
 			for _, rune := range color {
-				query += "&" + table + "."
 				switch string(rune) {
 				case "r", "R":
 					fallthrough
@@ -221,13 +220,19 @@ func colorQuery(colors []string, ID bool) string {
 				case "g", "G":
 					fallthrough
 				case "w", "W":
+					query += "&" + table + "."
 					query += string(unicode.ToLower(rune))
+				case "0":
+					query += "&"+ table +".colorless"
 				default:
-					query += "colorless"
 				}
 			}
 		} else {
-			query += "|" + table + "." + strings.ToLower(color)
+			if color == "0" {
+				query += "|" + table + ".colorless"
+			} else {
+				query += "|" + table + "." + strings.ToLower(color)
+			}
 		}
 	}
 	return query
